@@ -2125,6 +2125,28 @@ rpmRC hdrblobGet(hdrblob blob, uint32_t tag, rpmtd td)
     return rc;
 }
 
+int hdrblobClampUint32(hdrblob blob, rpmTagVal tag, uint32_t maxval)
+{
+    int clamped = 0;
+    const struct entryInfo_s *pe = hdrblobFindEntry(blob, tag);
+
+    if (pe != NULL) {
+	struct entryInfo_s einfo;
+
+	ei2h(pe, &einfo);
+	if (einfo.type == RPM_INT32_TYPE) {
+	    uint32_t *vals = (uint32_t *)(blob->dataStart + einfo.offset);
+	    for (uint32_t i = 0; i < einfo.count; i++) {
+		if (ntohl(vals[i]) > maxval) {
+		    vals[i] = htonl(maxval);
+		    clamped = 1;
+		}
+	    }
+	}
+    }
+    return clamped;
+}
+
 Header headerImport(void * blob, unsigned int bsize, headerImportFlags flags)
 {
     Header h = NULL;

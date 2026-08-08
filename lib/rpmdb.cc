@@ -2358,6 +2358,34 @@ static int rpmdbSetPermissions(char * src, char * dest)
     return rc;
 }
 
+/*
+ * Clamp install timestamps to SOURCE_DATE_EPOCH so that a rebuilt
+ * database is reproducible, similar to what build/files.cc does for
+ * file timestamps. The tags cannot be modified through the header API
+ * as they are dribbles of the immutable region, so patch them in the
+ * exported blob and load that as a new header.
+ */
+static Header clampInstallTime(Header h, uint32_t clamptime)
+{
+    Header nh = NULL;
+    unsigned int len = 0;
+    void *uh = headerExport(h, &len);
+    struct hdrblob_s blob;
+
+    if (uh == NULL)
+	return NULL;
+
+    if (hdrblobInit(uh, len, RPMTAG_HEADERIMMUTABLE, 0, &blob, NULL) == RPMRC_OK) {
+	hdrblobClampUint32(&blob, RPMTAG_INSTALLTIME, clamptime);
+	hdrblobClampUint32(&blob, RPMTAG_INSTALLTID, clamptime);
+	if (hdrblobImport(&blob, 0, &nh, NULL) != RPMRC_OK)
+	    nh = NULL;
+    }
+    if (nh == NULL)
+	free(uh);
+    return nh;
+}
+
 int rpmdbRebuild(const char * prefix, rpmts ts,
 		rpmRC (*hdrchk) (rpmts ts, const void *uh, size_t uc, char ** msg),
 		int rebuildflags)
@@ -2416,6 +2444,19 @@ int rpmdbRebuild(const char * prefix, rpmts ts,
 
     {	Header h = NULL;
 	rpmdbMatchIterator mi;
+	uint64_t clamptime = 0;
+	char *sde = getenv("SOURCE_DATE_EPOCH");
+
+	if (sde) {
+	    char *endptr;
+	    errno = 0;
+	    clamptime = strtoull(sde, &endptr, 10);
+	    if (errno || endptr == sde || *endptr != '\0' ||
+		    clamptime > UINT32_MAX) {
+		rpmlog(RPMLOG_ERR, _("unable to parse SOURCE_DATE_EPOCH\n"));
+		clamptime = 0;
+	    }
+	}
 
 	mi = rpmdbInitIterator(olddb, RPMDBI_PACKAGES, NULL, 0);
 	if (ts && hdrchk)
@@ -2431,7 +2472,12 @@ int rpmdbRebuild(const char * prefix, rpmts ts,
 		continue;
 	    }
 
-	    rc = rpmdbAdd(newdb, h);
+	    Header nh = NULL;
+	    if (clamptime)
+		nh = clampInstallTime(h, (uint32_t) clamptime);
+
+	    rc = rpmdbAdd(newdb, nh ? nh : h);
+	    headerFree(nh);
 	    if (rc) {
 		rpmlog(RPMLOG_ERR, _("cannot add record originally at %u\n"),
 		       rpmdbGetIteratorOffset(mi));

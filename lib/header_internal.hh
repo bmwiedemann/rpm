@@ -48,6 +48,9 @@ RPM_GNUC_INTERNAL
 rpmRC hdrblobGet(hdrblob blob, uint32_t tag, rpmtd td);
 
 RPM_GNUC_INTERNAL
+int hdrblobClampUint32(hdrblob blob, rpmTagVal tag, uint32_t maxval);
+
+RPM_GNUC_INTERNAL
 void hdrblobDigestUpdate(rpmDigestBundle bundle, struct hdrblob_s *blob);
 
 /** \ingroup header

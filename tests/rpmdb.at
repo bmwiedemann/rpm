@@ -657,6 +657,37 @@ runroot_user rpm -qa --qf "%{nevra} %{dbinstance}\n"
 RPMTEST_CLEANUP
 
 # ------------------------------
+# Test install time clamping using SOURCE_DATE_EPOCH
+RPMTEST_SETUP_RW([rpmdb --rebuilddb <clamped time>])
+AT_KEYWORDS([rpmdb])
+RPMDB_RESET
+
+RPMTEST_CHECK([
+
+timestamp=97445
+
+runroot rpm -i --ignorearch --ignoreos --nodeps --nosignature \
+	/data/RPMS/hello-2.0-1.x86_64.rpm
+runroot --setenv SOURCE_DATE_EPOCH $timestamp rpmdb --rebuilddb
+runroot rpm -q --qf "%{installtime} %{installtid}\n" hello
+],
+[0],
+[97445 97445
+],
+[])
+
+# older install times are not raised to SOURCE_DATE_EPOCH
+RPMTEST_CHECK([
+runroot --setenv SOURCE_DATE_EPOCH 108000 rpmdb --rebuilddb
+runroot rpm -q --qf "%{installtime} %{installtid}\n" hello
+],
+[0],
+[97445 97445
+],
+[])
+RPMTEST_CLEANUP
+
+# ------------------------------
 # Attempt to initialize, rebuild and verify a db
 RPMTEST_SETUP_RW([rpmdb --rebuilddb and verify empty database])
 AT_KEYWORDS([rpmdb])
